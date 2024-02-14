@@ -14,11 +14,11 @@
 	_min1 < _min2 ? _min1 : _min2; })
 
 
+// Resets bpf map
 int reset_histogram(int hist_fd) {
     for (int i = 0; i < SLOTS; i++) {
         int zero = 0;
         if (bpf_map_update_elem(hist_fd, &i, &zero, BPF_ANY) < 0)  {
-            fprintf(stderr,"ERROR: resetting histogram failed\n");
             return -1;
         }
     }
@@ -27,19 +27,17 @@ int reset_histogram(int hist_fd) {
 }
 
 // Gets and resets histogram
-int get_hist(int hist_fd, uint32_t *userspace_hist) {
+int get_histogram(int hist_fd, uint32_t *userspace_hist) {
     for (int i = 0; i < SLOTS; i++) {
         // kinda bad, copy 64 bytes to 32 bytes
         uint64_t val;
         if (bpf_map_lookup_elem(hist_fd, &i, &val) < 0) {
-            fprintf(stderr, "ERROR: getting histogram failed\n");
             return -1;
         }
 
         userspace_hist[i] = (uint32_t) val;
     }
 
-    // reset hist
     return reset_histogram(hist_fd);
 }
 
@@ -100,15 +98,18 @@ void print_log2_hist(unsigned int *vals, int vals_size, const char *val_type)
 	}
 }
 
-
-
 int main(int argc, char **argv) {
     struct bpf_object *obj;
     struct bpf_program *prog, *prog2, *prog3;
     struct bpf_link *link, *link2, *link3;
     int prog_fd, prog_fd2, prog_fd3;
 
-    int interval = argv[1] ? atoi(argv[1]) : 1;
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <interval>\n", argv[0]);
+        return 1;
+    }
+
+    int interval = argv[1];
 
     fprintf(stderr, "Loading BPF code in memory\n");
     obj = bpf_object__open_file("iolatency.bpf.o", NULL);
@@ -150,9 +151,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    fprintf(stderr, "BPF code loaded\n");
-
-    // get historam
     struct bpf_map *latency_hist;
     latency_hist = bpf_object__find_map_by_name(obj, "latency_hist");
     if (libbpf_get_error(latency_hist)) {
@@ -168,16 +166,14 @@ int main(int argc, char **argv) {
 
     uint32_t userspace_hist[SLOTS];
 
-    // loop every interval
     for (;;) {
         sleep(interval);
 
-        if (get_hist(hist_fd, userspace_hist) < 0) {
-            fprintf(stderr, "bad\n");
+        if (get_histogram(hist_fd, userspace_hist) < 0) {
+            fprintf(stderr, "ERROR: Could not get histogram\n");
             goto cleanup;
         }
 
-        // print userspace_hist
         print_log2_hist(userspace_hist, SLOTS, "usecs");
     }
 

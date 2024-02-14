@@ -5,7 +5,6 @@
 #include "iolatency.h"
 #include "bits.bpf.h"
 
-
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 struct {
@@ -36,7 +35,6 @@ int BPF_PROG(block_rq_issue, struct request *req) {
     bpf_map_update_elem(&io_log, &req, &ts, BPF_ANY);
     return 0;
 }
-
 
 SEC("raw_tracepoint/block_rq_complete")
 int BPF_PROG(block_rq_complete, struct request *req) {
